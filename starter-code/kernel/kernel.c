@@ -122,15 +122,6 @@ static int set_break(proc *p, uintptr_t new_brk) {
     return 0;
 }
 
-// Implement sbrk as a helper function if needed
-int sbrk(proc * p, intptr_t difference) {
-    uintptr_t old_brk = p->program_break;
-    uintptr_t new_brk = old_brk + difference;
-    int r = set_break(p, new_brk);
-    if (r < 0)
-        return -1;
-    return old_brk;
-}
 
 /**********************************************************************
  * 
