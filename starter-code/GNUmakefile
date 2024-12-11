@@ -7,12 +7,14 @@ all: $(IMAGE)
 # By default this is p-test.c
 # A backup exists in tests/bck
 TEST_FILE ?= p-test.c
-TEST_DIR = ./tests/
+TEST_DIR = ./tests
 
 # DIRECTORIES for each part of the system
 KERN_DIR  = ./kernel
 PROC_DIR = ./uspace
 SHARED_DIR = ./shared
+
+vpath %.c ${TEST_DIR}/
 
 # '$(V)' controls whether the lab makefiles print verbose commands (the
 # actual shell commands run by Make), as well as the "overview" commands
@@ -21,29 +23,6 @@ SHARED_DIR = ./shared
 # For overview commands only, run 'make all'.
 # For overview and verbose commands, run 'make V=1 all'.
 V = 0
-
-# $(INTERACTIVE) reports whether make is running in interactive shell or to file
-# it will be used to enable/disable color coding
-INTERACTIVE:=$(shell [ -t 0 ] && echo 1)
-
-# COLOR OUTPUT CODES
-ifdef INTERACTIVE
-	ccred:=$(shell echo -e "\033[0;31m")
-	ccyellow:=$(shell echo -e "\033[0;33m")
-	ccgreen:=$(shell echo -e "\033[1;32m")
-	ccend:=$(shell echo -e "\033[0m")
-else
-	ccred:=""
-	ccyellow:=""
-	ccgreen:=""
-	ccend:=""
-endif
-
-# locked img error messages
-# messages to display if another instance of QEMU is running
-#errbef:="$(ccred)Error, could not obtain lock. Are you running a session in - $(ccgreen)"
-#erraft:="$(ccred)If so try running $(ccgreen)make kill-lock$(ccred),\
-		otherwise $(ccyellow)ssh in manually and run make kill$(ccend)" 
 
 # 'HOST_FILE' will contain the hostname of the machine running $(QEMU)
 # This allows us to kill process in remote machine if needed
@@ -69,30 +48,32 @@ endif
 BOOT_OBJS = $(OBJDIR)/bootstart.o $(OBJDIR)/boot.o
 
 KERNEL_OBJS = $(OBJDIR)/k-exception.o $(OBJDIR)/kernel.o \
-	$(OBJDIR)/k-hardware.o $(OBJDIR)/vm.o $(OBJDIR)/k-loader.o
+	$(OBJDIR)/k-hardware.o $(OBJDIR)/vm.o $(OBJDIR)/k-loader.o $(OBJDIR)/k-vm.o
 KERNEL_LINKER_FILES = link/kernel.ld link/shared.ld
 
-PROCESS_BINARIES = $(OBJDIR)/p-allocator $(OBJDIR)/p-allocator2 \
-	$(OBJDIR)/p-allocator3 $(OBJDIR)/p-allocator4 \
-	$(OBJDIR)/p-fork $(OBJDIR)/p-forkexit $(OBJDIR)/p-test
+PROCESS_BINARIES = $(OBJDIR)/p-allocator \
+	$(OBJDIR)/p-malloc $(OBJDIR)/p-alloctests \
+	$(OBJDIR)/p-test
 LIB_OBJS = $(OBJDIR)/lib.o
-PROCESS_LIB_OBJS= $(OBJDIR)/process.o
-ALLOCATOR_OBJS = $(OBJDIR)/p-allocator.o $(LIB_OBJS) $(PROCESS_LIB_OBJS)
-PROCESS_OBJS = $(OBJDIR)/p-allocator.o $(OBJDIR)/p-fork.o \
-	$(OBJDIR)/p-forkexit.o $(OBJDIR)/p-test.o 
+PROCESS_LIB_OBJS = $(OBJDIR)/process.o $(OBJDIR)/malloc.o
+PROCESS_OBJS = $(OBJDIR)/p-allocator.o $(OBJDIR)/p-malloc.o \
+	$(OBJDIR)/p-alloctests.o $(OBJDIR)/p-test.o
 PROCESS_LINKER_FILES = link/process.ld link/shared.ld
 
 
 # Generic rules for making object files
 
 $(LIB_OBJS): $(OBJDIR)/%.o: $(SHARED_DIR)/%.c $(BUILDSTAMPS)
-	$(call compile,-I $(SHARED_DIR) -c $< -o $@,COMPILE)
+	$(call compile,-c $< -o $@,COMPILE)
 
 $(PROCESS_LIB_OBJS): $(OBJDIR)/%.o: $(PROC_DIR)/%.c $(BUILDSTAMPS)
 	$(call compile,-O1 -DWEENSYOS_PROCESS -I ./$(SHARED_DIR) -c $< -o $@,COMPILE)
 
 $(PROCESS_OBJS): $(OBJDIR)/%.o: $(PROC_DIR)/%.c $(BUILDSTAMPS)
 	$(call compile,-O1 -DWEENSYOS_PROCESS -I ./$(SHARED_DIR) -c $< -o $@,COMPILE)
+
+$(OBJDIR)/k-vm.o: $(KERN_DIR)/k-vm.o $(BUILDSTAMPS)
+	$(call run,cp $(KERN_DIR)/k-vm.o $(OBJDIR)/k-vm.o,COPY k-vm.o)
 
 $(OBJDIR)/%.o: $(KERN_DIR)/%.c $(BUILDSTAMPS)
 	$(call compile,-DWEENSYOS_KERNEL -I ./$(SHARED_DIR) -c $< -o $@,COMPILE)
@@ -109,11 +90,14 @@ $(OBJDIR)/%.o: $(KERN_DIR)/%.S $(BUILDSTAMPS)
 $(OBJDIR)/kernel.full: $(KERNEL_OBJS) $(LIB_OBJS) $(PROCESS_BINARIES) $(KERNEL_LINKER_FILES)
 	$(call link,-T $(KERNEL_LINKER_FILES) -o $@ $(KERNEL_OBJS) $(LIB_OBJS) -b binary $(PROCESS_BINARIES),LINK)
 
-$(OBJDIR)/p-%.full: $(OBJDIR)/p-%.o $(LIB_OBJS) $(PROCESS_LIB_OBJS) $(PROCESS_LINKER_FILES)
+$(OBJDIR)/p-%.full: $(OBJDIR)/p-%.o  $(LIB_OBJS) $(PROCESS_LIB_OBJS) $(PROCESS_LINKER_FILES)
 	$(call link,-T $(PROCESS_LINKER_FILES) -o $@ $< $(PROCESS_LIB_OBJS) $(LIB_OBJS),LINK)
 
-$(OBJDIR)/p-allocator%.full: $(ALLOCATOR_OBJS) link/p-allocator%.ld link/shared.ld
-	$(call link,-T link/p-allocator$*.ld link/shared.ld -o $@ $(ALLOCATOR_OBJS),LINK)
+$(OBJDIR)/p-allocator.full: $(OBJDIR)/p-allocator.o $(LIB_OBJS) $(PROCESS_LIB_OBJS) link/p-allocator.ld link/shared.ld
+	$(call link,-T link/p-allocator.ld link/shared.ld -o $@ $< $(PROCESS_LIB_OBJS) $(LIB_OBJS),LINK)
+
+$(OBJDIR)/p-alloctests.full: $(OBJDIR)/p-alloctests.o $(LIB_OBJS) $(PROCESS_LIB_OBJS) link/p-alloctests.ld link/shared.ld
+	$(call link,-T link/p-alloctests.ld link/shared.ld -o $@ $< $(PROCESS_LIB_OBJS) $(LIB_OBJS),LINK)
 
 $(OBJDIR)/%: $(OBJDIR)/%.full
 	$(call run,$(OBJDUMP) -S $< >$@.asm)
@@ -140,43 +124,43 @@ run-qemu-%: run-$(QEMUDISPLAY)-%
 	@:
 
 run-graphic-%: %.img check-qemu
-# 	@lockfile -r 0 ./$(HOST_LOCK) || (echo ${errbef} && cat $(HOST_FILE); echo ${erraft}; exit 1)
-#	@hostname > $(HOST_FILE) 
+	@lockfile -r 0 ./$(HOST_LOCK) || (printf "Error, could not obtain lock. Are you running a session in - " && cat $(HOST_FILE); printf "if so try running make kill-lock, otherwise ssh in manually and run make kill" ; exit 1)
+	hostname > $(HOST_FILE) 
 	$(call run,$(QEMU_PRELOAD) $(QEMU) $(QEMUOPT) $(QEMUIMG),QEMU $<)
-#	@rm -f ./$(HOST_FILE)
-#	@rm -f ./$(HOST_LOCK)
+	rm -f ./$(HOST_FILE)
+	rm -f ./$(HOST_LOCK)
 
 run-console-%: %.img check-qemu
-	@lockfile -r 0 ./$(HOST_LOCK) || (echo ${errbef} && cat $(HOST_FILE); echo ${erraft}; exit 1)
-	@hostname > $(HOST_FILE) 
+	@lockfile -r 0 ./$(HOST_LOCK) || (printf "Error, could not obtain lock. Are you running a session in - " && cat $(HOST_FILE); printf "if so try running make kill-lock, otherwise ssh in manually and run make kill" ; exit 1)
+	hostname > $(HOST_FILE) 
 	$(call run,$(QEMU_PRELOAD) $(QEMU) $(QEMUOPT) -display curses $(QEMUIMG),QEMU $<)
-	@rm -f ./$(HOST_FILE)
-	@rm -f ./$(HOST_LOCK)
+	rm -f ./$(HOST_FILE)
+	rm -f ./$(HOST_LOCK)
 
 run-monitor-%: %.img check-qemu
-	@lockfile -r 0 ./$(HOST_LOCK) || (echo ${errbef} && cat $(HOST_FILE); echo ${erraft}; exit 1)
-	@hostname > $(HOST_FILE) 
+	@lockfile -r 0 ./$(HOST_LOCK) || (printf "Error, could not obtain lock. Are you running a session in - " && cat $(HOST_FILE); printf "if so try running make kill-lock, otherwise ssh in manually and run make kill" ; exit 1)
+	hostname > $(HOST_FILE) 
 	$(call run,$(QEMU_PRELOAD) $(QEMU) $(QEMUOPT) -monitor stdio $(QEMUIMG),QEMU $<)
-	@rm -f ./$(HOST_FILE)
-	@rm -f ./$(HOST_LOCK)
+	rm -f ./$(HOST_FILE)
+	rm -f ./$(HOST_LOCK)
 
 run-gdb-%: run-gdb-$(QEMUDISPLAY)-%
 	@:
 
 run-gdb-graphic-%: %.img check-qemu
-	@lockfile -r 0 ./$(HOST_LOCK) || (echo ${errbef} && cat $(HOST_FILE); echo ${erraft}; exit 1)
-	@hostname > $(HOST_FILE) 
+	@lockfile -r 0 ./$(HOST_LOCK) || (printf "Error, could not obtain lock. Are you running a session in - " && cat $(HOST_FILE); printf "if so try running make kill-lock, otherwise ssh in manually and run make kill" ; exit 1)
+	hostname > $(HOST_FILE) 
 	$(call run,$(QEMU_PRELOAD) $(QEMU) $(QEMUOPT) -gdb tcp::1234 $(QEMUIMG) &,QEMU $<)
 	$(call run,sleep 0.5; gdb -x .gdbinit,GDB)
-	@rm -f ./$(HOST_FILE)
-	@rm -f ./$(HOST_LOCK)
+	rm -f ./$(HOST_FILE)
+	rm -f ./$(HOST_LOCK)
 
 run-gdb-console-%: %.img check-qemu
-	@lockfile -r 0 ./$(HOST_LOCK) || (echo ${errbef} && cat $(HOST_FILE); echo ${erraft}; exit 1)
-	@hostname > $(HOST_FILE) 
+	@lockfile -r 0 ./$(HOST_LOCK) || (printf "Error, could not obtain lock. Are you running a session in - " && cat $(HOST_FILE); printf "if so try running make kill-lock, otherwise ssh in manually and run make kill" ; exit 1)
+	hostname > $(HOST_FILE) 
 	$(call run,$(QEMU_PRELOAD) $(QEMU) $(QEMUOPT) -display curses -gdb tcp::1234 $(QEMUIMG),QEMU $<)
-	@rm -f ./$(HOST_FILE)
-	@rm -f ./$(HOST_LOCK)
+	rm -f ./$(HOST_FILE)
+	rm -f ./$(HOST_LOCK)
 
 run: run-qemu-$(basename $(IMAGE))
 run-qemu: run-qemu-$(basename $(IMAGE))
@@ -190,24 +174,41 @@ run-gdb-console: run-gdb-console-$(basename $(IMAGE))
 run-graphic-gdb: run-gdb-graphic-$(basename $(IMAGE))
 run-console-gdb: run-gdb-console-$(basename $(IMAGE))
 
-.PHONY:
 test-%: $(TEST_DIR)/p-%.c
 	$(call cpy, $<)
 
-.PHONY:
 restore:
-	@$(shell cp $(TEST_DIR)/bck/p-*.c ./$(PROC_DIR)/)
-	@echo "Restored uspace process code to default!"
+	$(shell cp $(TEST_DIR)/bck/*.c ./$(PROC_DIR)/)
 
 # Kill all my qemus
-#kill:
-#	-killall -u $$(whoami) $(QEMU)
-#	@sleep 0.2; if ps -U $$(whoami) | grep $(QEMU) >/dev/null; then killall -9 -u $$(whoami) $(QEMU); fi
+kill:
+	-killall -u $$(whoami) $(QEMU)
+	@sleep 0.2; if ps -U $$(whoami) | grep $(QEMU) >/dev/null; then killall -9 -u $$(whoami) $(QEMU); fi
 
-#.PHONY:
-#kill-lock:
-#	HOST=$$(cat $(HOST_FILE));HOST_CMD=hostname; if [ "$$HOST" == "$$HOST_CMD" ]; then make kill; else echo $$HOST;CWD=$$(pwd);ssh $$HOST "cd $$CWD;make kill;" && make clean-secret;fi
+kill-lock:
+	HOST=$$(cat $(HOST_FILE));HOST_CMD=hostname; if [ "$$HOST" == "$$HOST_CMD" ]; then  make kill; else echo $$HOST;CWD=$$(pwd);ssh $$HOST "cd $$CWD;make kill;" && make clean-secret;fi
 
-#.PHONY:
-#clean-secret:
-#	rm -f $(HOST_LOCK) $(HOST_FILE)
+
+.PHONY:
+clean-secret:
+	rm -f $(HOST_LOCK) $(HOST_FILE)
+
+# Compile uspace/p-[test_name].c WeensyOS processes to a Linux target.
+# This is done by setting the USE_LINUX environment variable, which causes
+# malloc.h to import process-linux.h instead of process.h.
+# Usage: make linux-p-[test_name]
+
+$(OBJDIR)/linux-malloc.o: $(PROC_DIR)/malloc.c $(PROC_DIR)/malloc.h $(PROC_DIR)/process-linux.h $(BUILDSTAMPS)
+	$(call run,gcc -c -DUSE_LINUX -I ./$(SHARED_DIR) -nostdlib -g -o $@ $<,COMPILE-LINUX $<)
+
+$(OBJDIR)/process-linux.o: $(PROC_DIR)/process-linux.c $(PROC_DIR)/process-linux.h $(BUILDSTAMPS)
+	$(call run,gcc -c -DUSE_LINUX -I ./$(SHARED_DIR) -nostdlib -g -o $@ $<,COMPILE-LINUX $<)
+
+$(OBJDIR)/linux-p-%.o: $(PROC_DIR)/p-%.c $(PROC_DIR)/process-linux.h $(BUILDSTAMPS)
+	$(call run,gcc -c -DUSE_LINUX -I ./$(SHARED_DIR) -nostdlib -g -o $@ $<,COMPILE-LINUX $<)
+
+$(OBJDIR)/linux-p-%: $(PROC_DIR)/process-linux.c $(OBJDIR)/linux-p-%.o $(OBJDIR)/linux-malloc.o
+	$(call run,gcc -g -o $@ $^,COMPILE-LINUX $<)
+
+linux-p-%: $(OBJDIR)/linux-p-%
+	$(call run,./$<,RUNNING TEST: $@)
