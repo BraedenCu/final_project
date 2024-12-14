@@ -355,18 +355,20 @@ void exception(x86_64_registers* reg) {
         case INT_SYS_BRK:
             {
                 // TODO : Implement brk syscall
-                uintptr_t new_brk = current->p_registers.reg_rdi;
-                int r = brk(current, new_brk);
-                current->p_registers.reg_rax = (r < 0) ? (uint64_t)-1 : new_brk;
+                //uintptr_t new_brk = current->p_registers.reg_rdi;
+                //int r = brk(current, new_brk);
+                brk(current, reg->reg_rdi);
+                //current->p_registers.reg_rax = (r < 0) ? (uint64_t)-1 : new_brk;
                 break;
             }
 
         case INT_SYS_SBRK:
             {
                 // TODO : Implement sbrk syscall
-                intptr_t difference = current->p_registers.reg_rdi;
-                int r = sbrk(current, difference);
-                current->p_registers.reg_rax = (r < 0) ? (uint64_t)-1 : current->program_break;
+                //intptr_t difference = current->p_registers.reg_rdi;
+                //int r = sbrk(current, difference);
+                sbrk(current, reg->reg_rdi);
+                //current->p_registers.reg_rax = (r < 0) ? (uint64_t)-1 : current->program_break;
                 break;
             }
 	case INT_SYS_PAGE_ALLOC:
