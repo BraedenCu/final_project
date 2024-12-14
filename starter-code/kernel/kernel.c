@@ -122,14 +122,6 @@ static int set_break(proc *p, uintptr_t new_brk) {
     return 0;
 }
 
-int sbrk(proc *p, intptr_t difference)
-{
-    uintptr_t new_brk = p->program_break + difference;
-    if (set_break(p, new_brk) < 0)
-        return -1;
-    return 0;
-}
-
 int brk(proc *p, uintptr_t new_brk)
 {
     if (set_break(p, new_brk) < 0)
@@ -232,6 +224,9 @@ int syscall_page_alloc(uintptr_t addr) {
 
 int sbrk(proc * p, intptr_t difference) {
     // TODO : Your code here
+    uintptr_t new_brk = p->program_break + difference;
+    if (set_break(p, new_brk) < 0)
+        return -1;
     return 0;
 }
 
