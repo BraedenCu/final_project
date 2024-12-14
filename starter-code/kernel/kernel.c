@@ -122,6 +122,20 @@ static int set_break(proc *p, uintptr_t new_brk) {
     return 0;
 }
 
+int sbrk(proc *p, intptr_t difference)
+{
+    uintptr_t new_brk = p->program_break + difference;
+    if (set_break(p, new_brk) < 0)
+        return -1;
+    return 0;
+}
+
+int brk(proc *p, uintptr_t new_brk)
+{
+    if (set_break(p, new_brk) < 0)
+        return -1;
+    return 0;
+}
 
 /**********************************************************************
  * 
@@ -346,19 +360,18 @@ void exception(x86_64_registers* reg) {
         case INT_SYS_BRK:
             {
                 // TODO : Implement brk syscall
-                uintptr_t addr = current->p_registers.reg_rdi;
-                int r = set_break(current, addr);
-                current->p_registers.reg_rax = (r < 0) ? (uint64_t)-1 : 0;
+                uintptr_t new_brk = current->p_registers.reg_rdi;
+                int r = brk(current, new_brk);
+                current->p_registers.reg_rax = (r < 0) ? (uint64_t)-1 : new_brk;
                 break;
             }
 
         case INT_SYS_SBRK:
             {
                 // TODO : Implement sbrk syscall
-                intptr_t increment = (intptr_t) current->p_registers.reg_rdi;
-                uintptr_t old_brk = current->program_break;
-                int r = set_break(current, old_brk + increment);
-                current->p_registers.reg_rax = (r < 0) ? (uint64_t)-1 : old_brk;
+                intptr_t difference = current->p_registers.reg_rdi;
+                int r = sbrk(current, difference);
+                current->p_registers.reg_rax = (r < 0) ? (uint64_t)-1 : current->program_break;
                 break;
             }
 	case INT_SYS_PAGE_ALLOC:
