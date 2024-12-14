@@ -32,6 +32,23 @@ static int program_load_segment(proc* p, const elf_program* ph,
                                 const uint8_t* src,
                                 x86_64_pagetable* (*allocator)(void));
 
+// Calculate the new program break aligned to the next page boundary
+uintptr_t calculate_new_break(uintptr_t segment_start, size_t segment_size, size_t page_size) {
+    // Step 1: Calculate the end address of the current segment
+    uintptr_t segment_end = segment_start + segment_size;
+
+    // Step 2: Add (PAGESIZE - 1) to prepare for rounding up
+    uintptr_t rounded_end = segment_end + (page_size - 1);
+
+    // Step 3: Create a mask to align the address down to the nearest page boundary
+    uintptr_t page_mask = ~(page_size - 1);
+
+    // Step 4: Apply the mask to get the page-aligned address
+    uintptr_t new_brk = rounded_end & page_mask;
+
+    return new_brk;
+}
+
 // program_load(p, programnumber)
 //    Load the code corresponding to program `programnumber` into the process
 //    `p` and set `p->p_registers.reg_rip` to its entry point. Calls
@@ -110,11 +127,11 @@ static int program_load_segment(proc* p, const elf_program* ph,
         }
     }
     // TODO : Add code here -> done
-    uintptr_t newbrk = (ph->p_va + ph->p_memsz + (PAGESIZE - 1)) & ~(PAGESIZE - 1);
+    uintptr_t new_brk = calculate_new_break(ph->p_va, ph->p_memsz, PAGESIZE);
 
-    if (newbrk > p->original_break) 
+    if (new_brk > p->original_break) 
     {
-        p->original_break = newbrk;
+        p->original_break = new_brk;
     }
     p->program_break = p->original_break;
     return 0;
