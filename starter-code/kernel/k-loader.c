@@ -65,8 +65,8 @@ int program_load(proc* p, int programnumber,
     // 
     // After loading all segments:
     // The heap should start at the next page boundary after the largest end_mem.
-    //p->program_break = ROUNDUP(p->program_break, PAGESIZE);
-    //p->original_break = p->program_break;  // initial break = empty heap
+    p->program_break = ROUNDUP(p->program_break, PAGESIZE);
+    p->original_break = p->program_break;  // initial break = empty heap
 
     p->p_registers.reg_rip = eh->e_entry;
     /* END CUSTOM */
@@ -126,11 +126,6 @@ static int program_load_segment(proc* p, const elf_program* ph,
     // `end_mem` is the end of the segment loaded. We use it to track the end of bss.
     if ((uintptr_t) end_mem > p->program_break) {
         p->program_break = (uintptr_t) end_mem;
-    }
-    // FIX THE BELOW TRANSFERED
-    uintptr_t new_brk = (ph->p_va + ph->p_memsz + PAGESIZE - 1) & ~(PAGESIZE - 1);
-    if (new_brk > p->program_break) {
-        p->program_break = new_brk;
     }
     /** END CUSTOM */
 

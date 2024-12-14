@@ -122,13 +122,6 @@ static int set_break(proc *p, uintptr_t new_brk) {
     return 0;
 }
 
-int brk(proc *p, uintptr_t new_brk)
-{
-    if (set_break(p, new_brk) < 0)
-        return -1;
-    return 0;
-}
-
 /**********************************************************************
  * 
  *  End Custom Helpers
@@ -224,10 +217,12 @@ int syscall_page_alloc(uintptr_t addr) {
 
 int sbrk(proc * p, intptr_t difference) {
     // TODO : Your code here
-    uintptr_t new_brk = p->program_break + difference;
-    if (set_break(p, new_brk) < 0)
+    uintptr_t old_brk = p->program_break;
+    uintptr_t new_brk = old_brk + difference;
+    int r = set_break(p, new_brk);
+    if (r < 0)
         return -1;
-    return 0;
+    return old_brk;
 }
 
 
@@ -355,20 +350,19 @@ void exception(x86_64_registers* reg) {
         case INT_SYS_BRK:
             {
                 // TODO : Implement brk syscall
-                //uintptr_t new_brk = current->p_registers.reg_rdi;
-                //int r = brk(current, new_brk);
-                brk(current, reg->reg_rdi);
-                //current->p_registers.reg_rax = (r < 0) ? (uint64_t)-1 : new_brk;
+                uintptr_t addr = current->p_registers.reg_rdi;
+                int r = set_break(current, addr);
+                current->p_registers.reg_rax = (r < 0) ? (uint64_t)-1 : 0;
                 break;
             }
 
         case INT_SYS_SBRK:
             {
                 // TODO : Implement sbrk syscall
-                //intptr_t difference = current->p_registers.reg_rdi;
-                //int r = sbrk(current, difference);
-                sbrk(current, reg->reg_rdi);
-                //current->p_registers.reg_rax = (r < 0) ? (uint64_t)-1 : current->program_break;
+                intptr_t increment = (intptr_t) current->p_registers.reg_rdi;
+                uintptr_t old_brk = current->program_break;
+                int r = set_break(current, old_brk + increment);
+                current->p_registers.reg_rax = (r < 0) ? (uint64_t)-1 : old_brk;
                 break;
             }
 	case INT_SYS_PAGE_ALLOC:
