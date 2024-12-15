@@ -70,7 +70,8 @@ int program_load(proc* p, int programnumber,
  **********************************************************************/
 
 // Calculate the new program break aligned to the next page boundary
-uintptr_t calculate_new_break(uintptr_t segment_start, size_t segment_size, size_t page_size) {
+uintptr_t calculate_new_break(uintptr_t segment_start, size_t segment_size, size_t page_size) 
+{
     // Step 1: Calculate the end address of the current segment
     uintptr_t segment_end = segment_start + segment_size;
 
