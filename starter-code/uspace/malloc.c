@@ -91,34 +91,44 @@ static block_header* extend_heap(size_t request)
 }
 
 // Insert a free block at the head of the free list
-static void insert_free_block(block_header* bh) {
+static void insert_free_block(block_header* bh) 
+{
     free_block* fb = (free_block*)((char*)bh + sizeof(block_header));
     fb->next = free_list_head;
     fb->prev = NULL;
-    if (free_list_head) {
+    if (free_list_head) 
+    {
         free_list_head->prev = fb;
     }
     free_list_head = fb;
 }
 
 // Remove a free block from the free list
-static void remove_free_block(free_block* fb) {
-    if (fb->prev) {
+static void remove_free_block(free_block* fb) 
+{
+    if (fb->prev) 
+    {
         fb->prev->next = fb->next;
-    } else {
+    } 
+    else 
+    {
         free_list_head = fb->next;
     }
-    if (fb->next) {
+    if (fb->next) 
+    {
         fb->next->prev = fb->prev;
     }
 }
 
 // First-fit: find the first free block that fits `aligned_size`
-static block_header* find_free_block(size_t aligned_size) {
+static block_header* find_free_block(size_t aligned_size) 
+{
     free_block* fb = free_list_head;
-    while (fb != NULL) {
+    while (fb != NULL) 
+    {
         block_header* bh = (block_header*)((char*)fb - sizeof(block_header));
-        if (bh->size >= aligned_size) {
+        if (bh->size >= aligned_size) 
+        {
             return bh; // first fit
         }
         fb = fb->next;
@@ -127,14 +137,17 @@ static block_header* find_free_block(size_t aligned_size) {
 }
 
 // Split a free block if it has space significantly larger than `needed`
-static void split_block(block_header* bh, size_t needed) {
+static void split_block(block_header* bh, size_t needed) 
+{
     size_t block_size = bh->size;
 
-    if (block_size < needed + MIN_BLOCK_SIZE) {
+    if (block_size < needed + MIN_BLOCK_SIZE) 
+    {
         // Not enough space to split; allocate entire block
         bh->is_free = 0;
         free_block* fb = (free_block*)((char*)bh + sizeof(block_header));
         remove_free_block(fb);
+
         return;
     }
 
@@ -152,10 +165,13 @@ static void split_block(block_header* bh, size_t needed) {
 }
 
 // Coalesce two adjacent free blocks [bh1, bh2] if bh2 starts right after bh1
-static int coalesce_if_adjacent(block_header* bh1, block_header* bh2) {
+static int coalesce_if_adjacent(block_header* bh1, block_header* bh2) 
+{
     // Check adjacency
     uintptr_t bh1_end = (uintptr_t)bh1 + bh1->size;
-    if (bh1_end == (uintptr_t)bh2) {
+
+    if (bh1_end == (uintptr_t)bh2) 
+    {
         // Merge bh2 into bh1
         free_block* fb2 = (free_block*)((char*)bh2 + sizeof(block_header));
         remove_free_block(fb2);
@@ -167,14 +183,16 @@ static int coalesce_if_adjacent(block_header* bh1, block_header* bh2) {
 }
 
 // Swap two long integers
-static void swap_long(long* a, long* b) {
+static void swap_long(long* a, long* b) 
+{
     long tmp = *a;
     *a = *b;
     *b = tmp;
 }
 
 // Swap two pointers
-static void swap_ptr(void** a, void** b) {
+static void swap_ptr(void** a, void** b) 
+{
     void* tmp = *a;
     *a = *b;
     *b = tmp;
@@ -183,13 +201,16 @@ static void swap_ptr(void** a, void** b) {
 // Partition function for QuickSort in descending order
 // We pick the last element as pivot, reorder the array so that
 // elements larger than pivot are before it, and smaller are after.
-static int partition(long size_array[], void* ptr_array[], int low, int high) {
+static int partition(long size_array[], void* ptr_array[], int low, int high) 
+{
     long pivot = size_array[high];   // pivot value
     int i = low - 1;
 
-    for (int j = low; j < high; j++) {
+    for (int j = low; j < high; j++) 
+    {
         // Descending order: compare '>' instead of '<'
-        if (size_array[j] > pivot) {
+        if (size_array[j] > pivot) 
+        {
             i++;
             swap_long(&size_array[i], &size_array[j]);
             swap_ptr(&ptr_array[i], &ptr_array[j]);
@@ -202,8 +223,10 @@ static int partition(long size_array[], void* ptr_array[], int low, int high) {
 }
 
 // QuickSort for descending order
-static void quicksort_descending(long size_array[], void* ptr_array[], int low, int high) {
-    if (low < high) {
+static void quicksort_descending(long size_array[], void* ptr_array[], int low, int high) 
+{
+    if (low < high) 
+    {
         int pi = partition(size_array, ptr_array, low, high);
         quicksort_descending(size_array, ptr_array, low, pi - 1);
         quicksort_descending(size_array, ptr_array, pi + 1, high);
@@ -224,6 +247,11 @@ static void quicksort_descending(long size_array[], void* ptr_array[], int low, 
  **********************************************************************/
 
 // MALLOC
+// malloc(sz):
+// allocates sz bytes of uninitialized memory and returns a pointer to the allocated memory
+// if sz == 0, then malloc() either returns NULL or a unique pointer value that can be
+// successfully passed to a later free
+// the pointer should be aligned to 8 bytes
 void* malloc(uint64_t numbytes) 
 {
     if (numbytes == 0) 
@@ -262,6 +290,11 @@ void* malloc(uint64_t numbytes)
 }
 
 // FREE
+// free(ptr)
+// the free funtion frees the memory space pointed to by ptr, which must have been returned
+// by a previous call to malloc or realloc, or if free has already been called before, then
+// undefined behavior occurs
+// if ptr == NULL, then no operation happens
 void free(void* ptr) 
 {
     if (!ptr) 
@@ -275,6 +308,12 @@ void free(void* ptr)
 }
 
 // CALLOC
+// calloc(num, sz):
+// allocates memory of an array of num elements of size sz bytes each and returns a pointer 
+// to the allocated array. The memory is set to 0. if num or sz is equal to 0, then calloc
+// returns NULL or a unique pointer value that can be successfully passed to a later free
+// calloc also checks for size overflow caused by num*sz
+// returns NULL on failure
 void* calloc(uint64_t num, uint64_t sz) 
 {
     // Check for multiplication overflow
@@ -295,6 +334,15 @@ void* calloc(uint64_t num, uint64_t sz)
 }
 
 // REALLOC
+// realloc(ptr, sz)
+// realloc changes the size of the memory block pointed to by ptr to size bytes.
+// the contents will be unchanged in the range from the start of the region up to the
+// minimum of the old and new sizes
+// if the new size is larger than the old size, the added memory will not be initialized
+// if ptr is NULL, then the call is equivalent to malloc(size) for all values of size
+// if size is equal to zero, and ptr is not NULL, then the call is equivalent to free(ptr)
+// unless ptr is NULL, it must have been returned by an earlier call to malloc(), or realloc().
+// if the area pointed to was moved, a free(ptr) is done.
 void* realloc(void* ptr, uint64_t sz) 
 {
     if (!ptr) 
@@ -373,6 +421,15 @@ void defrag()
 }
 
 // HEAP_INFO
+// heap_info(info)
+// set the appropriate values in the heap_info_struct passed
+// the malloc library will be responsible for alloc'ing size_array and 
+// ptr_array
+// the user, i.e. the process will be responsible for freeing these allocations
+// note that the allocations used by the heap_info_struct will count as metadata
+// and should NOT be included in the heap info
+// return 0 for a successfull call
+// if for any reason the information cannot be saved, return -1
 int heap_info(heap_info_struct* info) 
 {
     if (!info) 
