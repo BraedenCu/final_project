@@ -52,10 +52,13 @@ static void init_heap()
     {
         return;
     }
+    
     heap_initialized = 1;
 
     // mark the initial heap "start" so we can iterate for heap_info().
     heap_start_addr = (uintptr_t) sbrk(0);
+
+    //app_printf(0, "%p", heap_start_addr);
 
     free_list_head = NULL;
 }
