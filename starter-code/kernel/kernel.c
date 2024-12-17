@@ -221,12 +221,16 @@ int sbrk(proc * p, intptr_t difference) {
     uintptr_t new_brk = old_brk + difference;
     int r = set_break(p, new_brk);
     if (r < 0)
+    {
         return -1;
+    }
+
     return old_brk;
 }
 
 
-void syscall_mapping(proc* p){
+void syscall_mapping(proc* p)
+{
     uintptr_t mapping_ptr = p->p_registers.reg_rdi;
     uintptr_t ptr = p->p_registers.reg_rsi;
 
@@ -235,28 +239,40 @@ void syscall_mapping(proc* p){
 
     // check for write access
     if((map.perm & (PTE_W|PTE_U)) != (PTE_W|PTE_U))
+    {
         return;
+    }
     uintptr_t endaddr = mapping_ptr + sizeof(vamapping) - 1;
-    if (PAGENUMBER(endaddr) != PAGENUMBER(ptr)){
+
+    if (PAGENUMBER(endaddr) != PAGENUMBER(ptr))
+    {
         vamapping end_map = virtual_memory_lookup(p->p_pagetable, endaddr);
         // check for write access for end address
         if((end_map.perm & (PTE_W|PTE_P)) != (PTE_W|PTE_P))
-            return; 
+        {
+            return;
+        }
     }
     // find the actual mapping now
     vamapping ptr_lookup = virtual_memory_lookup(p->p_pagetable, ptr);
     memcpy((void *)map.pa, &ptr_lookup, sizeof(vamapping));
 }
 
-void syscall_mem_tog(proc* process){
+void syscall_mem_tog(proc* process)
+{
 
     pid_t p = process->p_registers.reg_rdi;
-    if(p == 0) {
+    if(p == 0) 
+    {
         disp_global = !disp_global;
     }
-    else {
+    else 
+    {
         if(p < 0 || p > NPROC || p != process->p_pid)
+        {
             return;
+        }
+
         process->display_status = !(process->display_status);
     }
 }
@@ -272,7 +288,8 @@ void syscall_mem_tog(proc* process){
 //
 //    Note that hardware interrupts are disabled whenever the kernel is running.
 
-void exception(x86_64_registers* reg) {
+void exception(x86_64_registers* reg) 
+{
     // Copy the saved registers into the `current` process descriptor
     // and always use the kernel's page table.
     current->p_registers = *reg;
@@ -287,9 +304,12 @@ void exception(x86_64_registers* reg) {
     console_show_cursor(cursorpos);
     if ((reg->reg_intno != INT_PAGEFAULT
 	    && reg->reg_intno != INT_GPF)
-            || (reg->reg_err & PFERR_USER)) {
+            || (reg->reg_err & PFERR_USER)) 
+            {
         check_virtual_memory();
-        if(disp_global){
+        
+        if(disp_global)
+        {
             memshow_physical();
             memshow_virtual_animate();
         }
