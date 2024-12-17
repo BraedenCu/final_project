@@ -38,6 +38,8 @@ void process_main(void) {
     defrag();
     heap_info(&h3);
 
+    //kernel_panic("h3.largest_free_chunk: %d, h2.largest_free_chunk": h3.largest_free_chunk, h2.largest_free_chunk);
+
     assert(h3.largest_free_chunk > h2.largest_free_chunk);
 
     app_printf(0, "DEFRAG PASS\n");
