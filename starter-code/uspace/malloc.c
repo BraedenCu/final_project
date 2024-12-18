@@ -139,7 +139,7 @@ static void split_block(vm_block_header* block_header, size_t needed) {
     insert_free_vm_block(leftover_block_header);
 }
 
-static int coalesce_if_adjacent(vm_block_header* block_header_one, vm_block_header* block_header_two) {
+static int combine_blocks(vm_block_header* block_header_one, vm_block_header* block_header_two) {
     uintptr_t block_header_one_end = (uintptr_t)block_header_one + block_header_one->size;
 
     if (block_header_one_end == (uintptr_t)block_header_two) 
@@ -151,11 +151,12 @@ static int coalesce_if_adjacent(vm_block_header* block_header_one, vm_block_head
         block_header_one->size += block_header_two->size;
         return 1;
     }
+
     return 0;
 }
 
-// Quicksort partition function for sorting in descending order
-static int partition(long size_array[], void* ptr_array[], int low, int high) {
+// standard quicksort implementation
+static int qs_partition(long size_array[], void* ptr_array[], int low, int high) {
     long pivot = size_array[high];
     int i = low - 1;
 
@@ -196,12 +197,13 @@ static int partition(long size_array[], void* ptr_array[], int low, int high) {
     return i + 1;
 }
 
-static void quicksort_descending(long size_array[], void* ptr_array[], int low, int high) {
+// standard quicksort implementation
+static void quick_sort(long size_array[], void* ptr_array[], int low, int high) {
     if (low < high) 
     {
-        int partition_index = partition(size_array, ptr_array, low, high);
-        quicksort_descending(size_array, ptr_array, low, partition_index - 1);
-        quicksort_descending(size_array, ptr_array, partition_index + 1, high);
+        int qs_partition_index = qs_partition(size_array, ptr_array, low, high);
+        quick_sort(size_array, ptr_array, low, qs_partition_index - 1);
+        quick_sort(size_array, ptr_array, qs_partition_index + 1, high);
     }
 }
 
@@ -223,15 +225,18 @@ void* malloc(uint64_t numbytes) {
     }
 
     size_t needed = ALIGN(numbytes + OVERHEAD);
+
     if (needed < (OVERHEAD + MIN_PAYLOAD_SIZE)) 
     {
         needed = OVERHEAD + MIN_PAYLOAD_SIZE;
     }
 
     vm_block_header* block_header = find_free_vm_block(needed);
+
     if (block_header) 
     {
         split_block(block_header, needed);
+
         return (void*)((char*)block_header + sizeof(vm_block_header));
     }
 
@@ -287,6 +292,7 @@ void* realloc(void* ptr, uint64_t sz)
 
     vm_block_header* old_block_header = (vm_block_header*)((char*)ptr - sizeof(vm_block_header));
     size_t old_size = old_block_header->size - sizeof(vm_block_header);
+
     if (sz <= old_size) 
     {
         return ptr;
@@ -314,21 +320,24 @@ void defrag() {
     {
         merged = 0;
         free_vm_block* vm_free_block_one = free_list_head;
+
         while (vm_free_block_one) 
         {
             vm_block_header* block_header_one = (vm_block_header*)((char*)vm_free_block_one - sizeof(vm_block_header));
             free_vm_block* vm_free_block_two = vm_free_block_one->next;
+
             while (vm_free_block_two) 
             {
                 vm_block_header* block_header_two = (vm_block_header*)((char*)vm_free_block_two - sizeof(vm_block_header));
-                if (coalesce_if_adjacent(block_header_one, block_header_two)) 
+                if (combine_blocks(block_header_one, block_header_two)) 
                 {
                     merged = 1;
                 } 
-                else if (coalesce_if_adjacent(block_header_two, block_header_one)) 
+                else if (combine_blocks(block_header_two, block_header_one)) 
                 {
                     merged = 1;
                 }
+
                 vm_free_block_two = vm_free_block_two->next;
             }
             vm_free_block_one = vm_free_block_one->next;
@@ -395,6 +404,7 @@ int heap_info(heap_info_struct* info) {
     int alloc_index = 0;
     current = heap_start_addr;
     uintptr_t heapend2 = (uintptr_t)sbrk(0);
+    
     while (current + sizeof(vm_block_header) <= heapend2) 
     {
         vm_block_header* block_header = (vm_block_header*)current;
@@ -428,7 +438,7 @@ int heap_info(heap_info_struct* info) {
 
     if (info->num_allocs > 0) 
     {
-        quicksort_descending(info->size_array, info->ptr_array, 0, alloc_index - 1);
+        quick_sort(info->size_array, info->ptr_array, 0, alloc_index - 1);
     }
 
     return 0;
