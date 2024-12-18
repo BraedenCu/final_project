@@ -325,7 +325,7 @@ void* realloc(void* ptr, uint64_t sz)
     return new_ptr;
 }
 
-// defrag: do O(n²) merging
+// defrag: do O(n^2) merging
 void defrag() {
     int merged = 1;
     while (merged) 
@@ -409,7 +409,7 @@ int heap_info(heap_info_struct* info) {
             }
             info->size_array = NULL;
             info->ptr_array = NULL;
-            
+
             return -1;
         }
     }
