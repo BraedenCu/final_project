@@ -104,15 +104,20 @@ static int unmap_page(proc *p, uintptr_t va) {
 static int set_break(proc *p, uintptr_t new_brk) {
     // Validate new break against heap start and stack
     if (new_brk < p->original_break)
+    {
         return -1;
+    }
     if (new_brk >= MEMSIZE_VIRTUAL - PAGESIZE) // stack is at MEMSIZE_VIRTUAL - PAGESIZE
+    {
         return -1;
+    }
 
     uintptr_t old_brk = p->program_break;
     p->program_break = new_brk;
 
     // If the heap is shrinking, unmap pages that no longer fall under the heap
-    if (new_brk < old_brk) {
+    if (new_brk < old_brk) 
+    {
         uintptr_t start = ROUNDUP(new_brk, PAGESIZE);
         uintptr_t end = ROUNDUP(old_brk, PAGESIZE);
         for (uintptr_t addr = start; addr < end; addr += PAGESIZE) {

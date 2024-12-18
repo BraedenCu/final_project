@@ -9,7 +9,7 @@
  **********************************************************************/
 
 #define ALIGNMENT 16
-#define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1)) // Alignment function shortcut
+#define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1)) 
 
 #define MIN_PAYLOAD_SIZE 24
 
@@ -53,7 +53,7 @@ static vm_block_header* extend_heap(size_t request) {
 
     // ensure block can hold header and free_vm_block
     if (request < (OVERHEAD + MIN_PAYLOAD_SIZE))
-     {
+    {
         request = OVERHEAD + MIN_PAYLOAD_SIZE;
     }
 
@@ -152,19 +152,7 @@ static int coalesce_if_adjacent(vm_block_header* block_header_one, vm_block_head
     return 0;
 }
 
-//  quicksort helper functions, pretty standard
-static void swap_long(long* a, long* b) {
-    long tmp = *a;
-    *a = *b;
-    *b = tmp;
-}
-
-static void swap_ptr(void** a, void** b) {
-    void* tmp = *a;
-    *a = *b;
-    *b = tmp;
-}
-
+// Quicksort partition function for sorting in descending order
 static int partition(long size_array[], void* ptr_array[], int low, int high) {
     long pivot = size_array[high];
     int i = low - 1;
@@ -174,21 +162,43 @@ static int partition(long size_array[], void* ptr_array[], int low, int high) {
         if (size_array[j] > pivot) 
         {
             i++;
-            swap_long(&size_array[i], &size_array[j]);
-            swap_ptr(&ptr_array[i], &ptr_array[j]);
+            // swap longs
+            {
+                long tmp = size_array[i];
+                size_array[i] = size_array[j];
+                size_array[j] = tmp;
+            }
+            // swap pointers
+            {
+                void* tmp = ptr_array[i];
+                ptr_array[i] = ptr_array[j];
+                ptr_array[j] = tmp;
+            }
         }
     }
-    swap_long(&size_array[i + 1], &size_array[high]);
-    swap_ptr(&ptr_array[i + 1], &ptr_array[high]);
+
+    // swap longs for pivot placement
+    {
+        long tmp = size_array[i + 1];
+        size_array[i + 1] = size_array[high];
+        size_array[high] = tmp;
+    }
+
+    // swap pointer for pivot placement
+    {
+        void* tmp = ptr_array[i + 1];
+        ptr_array[i + 1] = ptr_array[high];
+        ptr_array[high] = tmp;
+    }
 
     return i + 1;
 }
 
+// quicksort in descending order
 static void quicksort_descending(long size_array[], void* ptr_array[], int low, int high) {
     if (low < high) 
     {
         int partition_index = partition(size_array, ptr_array, low, high);
-
         quicksort_descending(size_array, ptr_array, low, partition_index - 1);
         quicksort_descending(size_array, ptr_array, partition_index + 1, high);
     }
@@ -201,11 +211,13 @@ static void quicksort_descending(long size_array[], void* ptr_array[], int low, 
  **********************************************************************/
 
 void* malloc(uint64_t numbytes) {
-    if (!heap_initialized) {
+    if (!heap_initialized) 
+    {
         init_heap();
     }
 
-    if (numbytes == 0) {
+    if (numbytes == 0) 
+    {
         return NULL;
     }
 
