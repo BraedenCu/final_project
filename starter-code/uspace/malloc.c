@@ -9,10 +9,8 @@
  **********************************************************************/
 
 #define ALIGNMENT 16 // everything should be aligned to 16
-#define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1)) 
-
+#define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1)) // alignment function
 #define MIN_PAYLOAD_SIZE 24
-
 #define OVERHEAD (sizeof(vm_block_header))
 
 // vm_block_header: start of every block (allocated/free)
@@ -44,7 +42,7 @@ static void init_heap() {
         return; // do nothing
     }
     heap_initialized = 1;
-    heap_start_addr = (uintptr_t) sbrk(0);
+    heap_start_addr = (uintptr_t) sbrk(0); // initialize sbrk
     free_list_head = NULL;
 }
 
@@ -81,6 +79,8 @@ static void insert_free_vm_block(vm_block_header* block_header) {
     {
         free_list_head->prev = free_block;
     }
+
+    // freeing insertion
     free_list_head = free_block;
 }
 
@@ -103,7 +103,8 @@ static vm_block_header* find_free_vm_block(size_t aligned_size) {
     free_vm_block* free_block = free_list_head;
     while (free_block) 
     {
-        vm_block_header* block_header = (vm_block_header*)((char*)free_block - sizeof(vm_block_header));
+        vm_block_header* block_header = (vm_block_header*)((char*)free_block - sizeof(vm_block_header)); // set block header based on sizing 
+
         if (block_header->size >= aligned_size) 
         {
             return block_header;
@@ -121,7 +122,8 @@ static void split_block(vm_block_header* block_header, size_t needed) {
     {
         // not enough so thus handle
         block_header->is_free = 0;
-        free_vm_block* free_block = (free_vm_block*)((char*)block_header + sizeof(vm_block_header));
+        free_vm_block* free_block = (free_vm_block*)((char*)block_header + sizeof(vm_block_header)); // set block header based on sizing 
+
         remove_free_vm_block(free_block);
 
         return;
@@ -133,23 +135,27 @@ static void split_block(vm_block_header* block_header, size_t needed) {
     free_vm_block* free_block_current = (free_vm_block*)((char*)block_header + sizeof(vm_block_header));
     remove_free_vm_block(free_block_current);
 
+    // split
     vm_block_header* leftover_block_header = (vm_block_header*)((char*)block_header + needed);
     leftover_block_header->size = block_size - needed;
     leftover_block_header->is_free = 1;
+    
+    // final insertion
     insert_free_vm_block(leftover_block_header);
 }
 
 static int combine_blocks(vm_block_header* block_header_one, vm_block_header* block_header_two) {
     uintptr_t block_header_one_end = (uintptr_t)block_header_one + block_header_one->size;
 
-    if (block_header_one_end == (uintptr_t)block_header_two) 
+    if (block_header_one_end == (uintptr_t)block_header_two) // checkk if can complete merging
     {
         // merge adjacent blocks
         free_vm_block* vm_free_block_two = (free_vm_block*)((char*)block_header_two + sizeof(vm_block_header));
         remove_free_vm_block(vm_free_block_two);
 
         block_header_one->size += block_header_two->size;
-        return 1;
+
+        return 1; // merge success
     }
 
     return 0;
@@ -214,42 +220,46 @@ static void quick_sort(long size_array[], void* ptr_array[], int low, int high) 
  **********************************************************************/
 
 void* malloc(uint64_t numbytes) {
+    // check if heap is initialized
     if (!heap_initialized) 
     {
         init_heap();
     }
 
+    // error
     if (numbytes == 0) 
     {
         return NULL;
     }
 
-    size_t needed = ALIGN(numbytes + OVERHEAD);
+    size_t needed = ALIGN(numbytes + OVERHEAD); // check how many we need for prop alignment
 
-    if (needed < (OVERHEAD + MIN_PAYLOAD_SIZE)) 
+    if (needed < (OVERHEAD + MIN_PAYLOAD_SIZE))  // adjust needed basd on alignment miscalc
     {
         needed = OVERHEAD + MIN_PAYLOAD_SIZE;
     }
 
-    vm_block_header* block_header = find_free_vm_block(needed);
+    vm_block_header* block_header = find_free_vm_block(needed); // create header
 
     if (block_header) 
     {
-        split_block(block_header, needed);
+        split_block(block_header, needed); // split of needed 
 
-        return (void*)((char*)block_header + sizeof(vm_block_header));
+        return (void*)((char*)block_header + sizeof(vm_block_header)); // return sized properly addr
     }
 
-    block_header = extend_heap(needed);
+    block_header = extend_heap(needed); // extend heap only if needed
+
+    // error condition check
     if (!block_header) 
     {
         return NULL;
     }
 
-    insert_free_vm_block(block_header);
-    split_block(block_header, needed);
+    insert_free_vm_block(block_header); // insertion
+    split_block(block_header, needed); // split
 
-    return (void*)((char*)block_header + sizeof(vm_block_header));
+    return (void*)((char*)block_header + sizeof(vm_block_header)); // return sized properly addr
 }
 
 void free(void* ptr) {
@@ -258,7 +268,9 @@ void free(void* ptr) {
         return;
     }
     vm_block_header* block_header = (vm_block_header*)((char*)ptr - sizeof(vm_block_header));
-    block_header->is_free = 1;
+    block_header->is_free = 1; // validate free
+
+    // insertion fred blocik
     insert_free_vm_block(block_header);
 }
 
@@ -282,7 +294,7 @@ void* realloc(void* ptr, uint64_t sz)
 {
     if (!ptr) 
     {
-        return malloc(sz);
+        return malloc(sz); // if doesnt exist all we need to do is malloc
     }
     if (sz == 0) 
     {
@@ -298,7 +310,7 @@ void* realloc(void* ptr, uint64_t sz)
         return ptr;
     }
 
-    void* new_ptr = malloc(sz);
+    void* new_ptr = malloc(sz); // create new allocation
     if (!new_ptr) 
     {
         return NULL;
@@ -306,7 +318,7 @@ void* realloc(void* ptr, uint64_t sz)
 
     if (old_size > 0) 
     {
-        memcpy(new_ptr, ptr, old_size);
+        memcpy(new_ptr, ptr, old_size); // copy over allocation
     }
 
     free(ptr);
@@ -397,6 +409,7 @@ int heap_info(heap_info_struct* info) {
             }
             info->size_array = NULL;
             info->ptr_array = NULL;
+            
             return -1;
         }
     }
