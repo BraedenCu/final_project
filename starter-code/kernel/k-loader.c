@@ -71,17 +71,17 @@ int program_load(proc* p, int programnumber,
 
 uintptr_t calculate_new_break(uintptr_t segment_start, size_t segment_size, size_t page_size) 
 {
-    // step 1: calculate the end address of the current segment
-    uintptr_t segment_end = segment_start + segment_size;
+    // calculate the end address of the current segment
+    uintptr_t segment_end_of_current = segment_start + segment_size;
 
-    // step 2: add (PAGESIZE - 1) to prepare for rounding up
-    uintptr_t rounded_end = segment_end + (page_size - 1);
+    // add (PAGESIZE - 1) to prepare for rounding up
+    uintptr_t rounded_segment_end = segment_end_of_current + (page_size - 1);
 
-    // step 3: create a mask to align the address down to the nearest page boundary
-    uintptr_t page_mask = ~(page_size - 1);
+    // create a mask to align the address down to the nearest page boundary
+    uintptr_t page_alignment = ~(page_size - 1);
 
-    // step 4: apply the mask to get the page-aligned address
-    uintptr_t new_brk = rounded_end & page_mask;
+    // apply the mask to get the page-aligned address
+    uintptr_t new_brk = rounded_segment_end & page_alignment;
 
     return new_brk;
 }
