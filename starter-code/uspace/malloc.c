@@ -8,7 +8,7 @@
  * 
  **********************************************************************/
 
-#define ALIGNMENT 16
+#define ALIGNMENT 16 // everything should be aligned to 16
 #define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1)) 
 
 #define MIN_PAYLOAD_SIZE 24
@@ -65,84 +65,86 @@ static vm_block_header* extend_heap(size_t request) {
         return NULL; // sbrk failed
     }
 
-    vm_block_header* new_bh = (vm_block_header*) p;
-    new_bh->size = request;
-    new_bh->is_free = 1;
+    vm_block_header* new_block_header = (vm_block_header*) p;
+    new_block_header->size = request;
+    new_block_header->is_free = 1;
 
-    return new_bh;
+    return new_block_header;
 }
 
-static void insert_free_vm_block(vm_block_header* bh) {
-    free_vm_block* fb = (free_vm_block*)((char*)bh + sizeof(vm_block_header));
-    fb->next = free_list_head;
-    fb->prev = NULL;
+static void insert_free_vm_block(vm_block_header* block_header) {
+    free_vm_block* free_block = (free_vm_block*)((char*)block_header + sizeof(vm_block_header));
+    free_block->next = free_list_head;
+    free_block->prev = NULL;
 
     if (free_list_head) 
     {
-        free_list_head->prev = fb;
+        free_list_head->prev = free_block;
     }
-    free_list_head = fb;
+    free_list_head = free_block;
 }
 
-static void remove_free_vm_block(free_vm_block* fb) {
-    if (fb->prev) 
+static void remove_free_vm_block(free_vm_block* free_block) {
+    if (free_block->prev) 
     {
-        fb->prev->next = fb->next;
+        free_block->prev->next = free_block->next;
     } 
     else 
     {
-        free_list_head = fb->next;
+        free_list_head = free_block->next;
     }
-    if (fb->next) 
+    if (free_block->next) 
     {
-        fb->next->prev = fb->prev;
+        free_block->next->prev = free_block->prev;
     }
 }
 
 static vm_block_header* find_free_vm_block(size_t aligned_size) {
-    free_vm_block* fb = free_list_head;
-    while (fb) 
+    free_vm_block* free_block = free_list_head;
+    while (free_block) 
     {
-        vm_block_header* bh = (vm_block_header*)((char*)fb - sizeof(vm_block_header));
-        if (bh->size >= aligned_size) 
+        vm_block_header* block_header = (vm_block_header*)((char*)free_block - sizeof(vm_block_header));
+        if (block_header->size >= aligned_size) 
         {
-            return bh;
+            return block_header;
         }
-        fb = fb->next;
+        free_block = free_block->next;
     }
     return NULL;
 }
 
-static void split_block(vm_block_header* bh, size_t needed) {
-    size_t block_size = bh->size;
+static void split_block(vm_block_header* block_header, size_t needed) {
+    size_t block_size = block_header->size;
 
-    // Check if we have enough space to split off another free block
+    // do we need to split ? check if space
     if (block_size < needed + (OVERHEAD + MIN_PAYLOAD_SIZE)) 
     {
-        // Not enough space for splitting
-        bh->is_free = 0;
-        free_vm_block* fb = (free_vm_block*)((char*)bh + sizeof(vm_block_header));
-        remove_free_vm_block(fb);
+        // not enough so thus handle
+        block_header->is_free = 0;
+        free_vm_block* free_block = (free_vm_block*)((char*)block_header + sizeof(vm_block_header));
+        remove_free_vm_block(free_block);
+
         return;
     }
 
     // Split the block
-    bh->size = needed;
-    bh->is_free = 0;
-    free_vm_block* fb_current = (free_vm_block*)((char*)bh + sizeof(vm_block_header));
-    remove_free_vm_block(fb_current);
+    block_header->size = needed;
+    block_header->is_free = 0;
+    free_vm_block* free_block_current = (free_vm_block*)((char*)block_header + sizeof(vm_block_header));
+    remove_free_vm_block(free_block_current);
 
-    vm_block_header* leftover_bh = (vm_block_header*)((char*)bh + needed);
-    leftover_bh->size = block_size - needed;
-    leftover_bh->is_free = 1;
-    insert_free_vm_block(leftover_bh);
+    vm_block_header* leftover_block_header = (vm_block_header*)((char*)block_header + needed);
+    leftover_block_header->size = block_size - needed;
+    leftover_block_header->is_free = 1;
+    insert_free_vm_block(leftover_block_header);
 }
 
 static int coalesce_if_adjacent(vm_block_header* block_header_one, vm_block_header* block_header_two) {
     uintptr_t block_header_one_end = (uintptr_t)block_header_one + block_header_one->size;
+
     if (block_header_one_end == (uintptr_t)block_header_two) 
     {
-        // Adjacent blocks, merge block_header_two into block_header_one
+        // merge adjacent blocks
         free_vm_block* vm_free_block_two = (free_vm_block*)((char*)block_header_two + sizeof(vm_block_header));
         remove_free_vm_block(vm_free_block_two);
 
@@ -194,7 +196,6 @@ static int partition(long size_array[], void* ptr_array[], int low, int high) {
     return i + 1;
 }
 
-// quicksort in descending order
 static void quicksort_descending(long size_array[], void* ptr_array[], int low, int high) {
     if (low < high) 
     {
@@ -227,23 +228,23 @@ void* malloc(uint64_t numbytes) {
         needed = OVERHEAD + MIN_PAYLOAD_SIZE;
     }
 
-    vm_block_header* bh = find_free_vm_block(needed);
-    if (bh) 
+    vm_block_header* block_header = find_free_vm_block(needed);
+    if (block_header) 
     {
-        split_block(bh, needed);
-        return (void*)((char*)bh + sizeof(vm_block_header));
+        split_block(block_header, needed);
+        return (void*)((char*)block_header + sizeof(vm_block_header));
     }
 
-    bh = extend_heap(needed);
-    if (!bh) 
+    block_header = extend_heap(needed);
+    if (!block_header) 
     {
         return NULL;
     }
 
-    insert_free_vm_block(bh);
-    split_block(bh, needed);
+    insert_free_vm_block(block_header);
+    split_block(block_header, needed);
 
-    return (void*)((char*)bh + sizeof(vm_block_header));
+    return (void*)((char*)block_header + sizeof(vm_block_header));
 }
 
 void free(void* ptr) {
@@ -251,13 +252,13 @@ void free(void* ptr) {
     {
         return;
     }
-    vm_block_header* bh = (vm_block_header*)((char*)ptr - sizeof(vm_block_header));
-    bh->is_free = 1;
-    insert_free_vm_block(bh);
+    vm_block_header* block_header = (vm_block_header*)((char*)ptr - sizeof(vm_block_header));
+    block_header->is_free = 1;
+    insert_free_vm_block(block_header);
 }
 
 void* calloc(uint64_t num, uint64_t sz) {
-    // Overflow check
+    // overflow check
     if (num != 0 && (num * sz) / num != sz) 
     {
         return NULL; // overflow
@@ -284,8 +285,8 @@ void* realloc(void* ptr, uint64_t sz)
         return NULL;
     }
 
-    vm_block_header* old_bh = (vm_block_header*)((char*)ptr - sizeof(vm_block_header));
-    size_t old_size = old_bh->size - sizeof(vm_block_header);
+    vm_block_header* old_block_header = (vm_block_header*)((char*)ptr - sizeof(vm_block_header));
+    size_t old_size = old_block_header->size - sizeof(vm_block_header);
     if (sz <= old_size) 
     {
         return ptr;
@@ -352,18 +353,18 @@ int heap_info(heap_info_struct* info) {
 
     while (current + sizeof(vm_block_header) <= heap_end) 
     {
-        vm_block_header* bh = (vm_block_header*)current;
-        if (bh->size == 0) 
+        vm_block_header* block_header = (vm_block_header*)current;
+        if (block_header->size == 0) 
         {
             break;
         }
-        uintptr_t next = current + bh->size;
+        uintptr_t next = current + block_header->size;
         if (next > heap_end) 
         {
             break;
         }
 
-        if (!bh->is_free) 
+        if (!block_header->is_free) 
         {
             info->num_allocs++;
         }
@@ -396,29 +397,29 @@ int heap_info(heap_info_struct* info) {
     uintptr_t heapend2 = (uintptr_t)sbrk(0);
     while (current + sizeof(vm_block_header) <= heapend2) 
     {
-        vm_block_header* bh = (vm_block_header*)current;
-        if (bh->size == 0) 
+        vm_block_header* block_header = (vm_block_header*)current;
+        if (block_header->size == 0) 
         {
             break;
         }
-        uintptr_t next = current + bh->size;
+        uintptr_t next = current + block_header->size;
         if (next > heapend2) 
         {
             break;
         }
 
-        if (bh->is_free) 
+        if (block_header->is_free) 
         {
-            info->free_space += bh->size;
-            if ((long)bh->size > info->largest_free_chunk) 
+            info->free_space += block_header->size;
+            if ((long)block_header->size > info->largest_free_chunk) 
             {
-                info->largest_free_chunk = bh->size;
+                info->largest_free_chunk = block_header->size;
             }
         } 
         else 
         {
-            info->size_array[alloc_index] = (long)bh->size;
-            info->ptr_array[alloc_index] = (void*)((char*)bh + sizeof(vm_block_header));
+            info->size_array[alloc_index] = (long)block_header->size;
+            info->ptr_array[alloc_index] = (void*)((char*)block_header + sizeof(vm_block_header));
             alloc_index++;
         }
 
