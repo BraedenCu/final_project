@@ -487,8 +487,14 @@ int heap_info(heap_info_struct* info)
         if (!info->size_array || !info->ptr_array) 
         {
             // Cleanup on failure
-            if (info->size_array) free(info->size_array);
-            if (info->ptr_array) free(info->ptr_array);
+            if (info->size_array) 
+            {
+                free(info->size_array);
+            }
+            if (info->ptr_array) 
+            {
+                free(info->ptr_array);
+            }
             info->size_array = NULL;
             info->ptr_array = NULL;
 
