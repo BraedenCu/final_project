@@ -80,29 +80,29 @@ static void process_setup(pid_t pid, int program_number);
  * 
  **********************************************************************/
 
-// Helper function to unmap a single page and update pageinfo
 static int unmap_page(proc *p, uintptr_t va) {
     vamapping map = virtual_memory_lookup(p->p_pagetable, va);
-    if (map.pa == (uintptr_t) -1) {
-        // Page already unmapped
-        return 0;
+    if (map.pa == (uintptr_t) -1) 
+    {
+        return 0; // page already GONE
     }
     int pn = map.pn;
-    // Decrement refcount
-    pageinfo[pn].refcount--;
-    if (pageinfo[pn].refcount == 0)
-        pageinfo[pn].owner = PO_FREE;
+    pageinfo[pn].refcount = pageinfo[pn].refcount - 1;
 
-    // Unmap the page by setting permission=0
-    if (virtual_memory_map(p->p_pagetable, va, 0, PAGESIZE, 0) < 0) {
-        kernel_panic("unmap_page failed");
+    if (pageinfo[pn].refcount == 0) 
+    {
+        pageinfo[pn].owner = PO_FREE;
+    }
+
+    if (virtual_memory_map(p->p_pagetable, va, 0, PAGESIZE, 0) < 0) // set perm = 0, unmap page
+    {
+        kernel_panic("unmap_page failed"); // if failure throw
     }
     return 0;
 }
 
 // Helper function to set a new break
 static int set_break(proc *p, uintptr_t new_brk) {
-    // Validate new break against heap start and stack
     if (new_brk < p->original_break)
     {
         return -1;
@@ -115,12 +115,14 @@ static int set_break(proc *p, uintptr_t new_brk) {
     uintptr_t old_brk = p->program_break;
     p->program_break = new_brk;
 
-    // If the heap is shrinking, unmap pages that no longer fall under the heap
+    // if heap shrinks must unmap pages
     if (new_brk < old_brk) 
     {
         uintptr_t start = ROUNDUP(new_brk, PAGESIZE);
         uintptr_t end = ROUNDUP(old_brk, PAGESIZE);
-        for (uintptr_t addr = start; addr < end; addr += PAGESIZE) {
+
+        for (uintptr_t addr = start; addr < end; addr += PAGESIZE) 
+        {
             unmap_page(p, addr);
         }
     }
@@ -225,6 +227,7 @@ int sbrk(proc * p, intptr_t difference) {
     uintptr_t old_brk = p->program_break;
     uintptr_t new_brk = old_brk + difference;
     int r = set_break(p, new_brk);
+    
     if (r < 0)
     {
         return -1;
@@ -377,7 +380,15 @@ void exception(x86_64_registers* reg)
                 // TODO : Implement brk syscall
                 uintptr_t addr = current->p_registers.reg_rdi;
                 int r = set_break(current, addr);
-                current->p_registers.reg_rax = (r < 0) ? (uint64_t)-1 : 0;
+
+                if (r < 0) 
+                {
+                    current->p_registers.reg_rax = (uint64_t)-1;
+                } 
+                else 
+                {
+                    current->p_registers.reg_rax = 0;
+                }
                 break;
             }
 
@@ -387,7 +398,15 @@ void exception(x86_64_registers* reg)
                 intptr_t increment = (intptr_t) current->p_registers.reg_rdi;
                 uintptr_t old_brk = current->program_break;
                 int r = set_break(current, old_brk + increment);
-                current->p_registers.reg_rax = (r < 0) ? (uint64_t)-1 : old_brk;
+
+                if (r < 0) 
+                {
+                    current->p_registers.reg_rax = (uint64_t)-1;
+                } 
+                else 
+                {
+                    current->p_registers.reg_rax = old_brk;
+                }
                 break;
             }
 	case INT_SYS_PAGE_ALLOC:
@@ -436,33 +455,35 @@ void exception(x86_64_registers* reg)
                 const char* operation = reg->reg_err & PFERR_WRITE ? "write" : "read";
                 const char* problem = reg->reg_err & PFERR_PRESENT ? "protection problem" : "missing page";
 
-                // Check if this is a missing page in the heap (lazy allocation)
-                if ((reg->reg_err & PFERR_USER) && !(reg->reg_err & PFERR_PRESENT)) {
-                    // Heap range check
-                    if (addr >= current->original_break && addr < current->program_break) {
-                        // Allocate a page on demand
+                // lazy allocation (check) 
+                if ((reg->reg_err & PFERR_USER) && !(reg->reg_err & PFERR_PRESENT)) 
+                {
+                    if (addr >= current->original_break && addr < current->program_break) 
+                    {
                         uintptr_t fault_page = ROUNDDOWN(addr, PAGESIZE);
                         uintptr_t pa = (uintptr_t)palloc(current->p_pid);
-                        if (!pa) {
-                            // Out of memory - kill the process
+                        if (!pa) 
+                        {
+                            // out of mem kill it !!!
                             current->p_state = P_BROKEN;
                             syscall_exit();
                             break;
                         }
-                        if (virtual_memory_map(current->p_pagetable, fault_page, pa, PAGESIZE, PTE_P|PTE_W|PTE_U) < 0) {
-                            // Can't map - kill the process
+                        if (virtual_memory_map(current->p_pagetable, fault_page, pa, PAGESIZE, PTE_P|PTE_W|PTE_U) < 0) 
+                        {
+                            // cant map kill!!!
                             current->p_state = P_BROKEN;
                             syscall_exit();
                             break;
                         }
-                        // Successfully handled the page fault - make sure process is runnable
+                        // successfully handled the page fault - make sure process is runnable
                         current->p_state = P_RUNNABLE;
-                        // Return to user mode
+                        // return to user mode
                         run(current);
                     }
                 }
 
-                // If we reach here, it's not a valid heap fault
+                // invalid page fault if this is reached :(
                 console_printf(CPOS(24, 0), 0x0C00,
                         "Process %d page fault for %p (%s %s, rip=%p)!\n",
                         current->p_pid, addr, operation, problem, reg->reg_rip);
@@ -478,9 +499,12 @@ void exception(x86_64_registers* reg)
     }
 
     // Return to the current process (or run something else).
-    if (current->p_state == P_RUNNABLE) {
+    if (current->p_state == P_RUNNABLE) 
+    {
         run(current);
-    } else {
+    } 
+    else 
+    {
         schedule();
     }
 }
