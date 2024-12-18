@@ -8,7 +8,7 @@
  * 
  **********************************************************************/
 
-#define ALIGNMENT 16 // everything should be aligned to 16
+#define ALIGNMENT 8 // everything should be aligned to 16
 #define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1)) // alignment function
 #define MIN_PAYLOAD_SIZE 24
 #define OVERHEAD (sizeof(vm_block_header))
@@ -362,7 +362,6 @@ int heap_info(heap_info_struct* info) {
     {
         return -1;
     }
-
     info->num_allocs = 0;
     info->size_array = NULL;
     info->ptr_array = NULL;
@@ -370,8 +369,9 @@ int heap_info(heap_info_struct* info) {
     info->largest_free_chunk = 0;
 
     uintptr_t current = heap_start_addr;
-    uintptr_t heap_end = (uintptr_t) sbrk(0);
+    uintptr_t heap_end = (uintptr_t)sbrk(0);
 
+    // First pass: Count allocations and calculate free space/largest free chunk
     while (current + sizeof(vm_block_header) <= heap_end) 
     {
         vm_block_header* block_header = (vm_block_header*)current;
@@ -388,37 +388,47 @@ int heap_info(heap_info_struct* info) {
         if (!block_header->is_free) 
         {
             info->num_allocs++;
+        } 
+        else 
+        {
+            info->free_space += block_header->size;
+            if ((long)block_header->size > info->largest_free_chunk) 
+            {
+                info->largest_free_chunk = block_header->size;
+            }
         }
         current = next;
     }
 
-    if (info->num_allocs > 0) 
+    if (info->num_allocs == 0) 
     {
-        info->size_array = (long*)malloc(info->num_allocs * sizeof(long));
-        info->ptr_array = (void**)malloc(info->num_allocs * sizeof(void*));
-
-        if (!info->size_array || !info->ptr_array) 
-        {
-            if (info->size_array) 
-            {
-                free(info->size_array);
-            }
-            if (info->ptr_array) 
-            {
-                free(info->ptr_array);
-            }
-            info->size_array = NULL;
-            info->ptr_array = NULL;
-
-            return -1;
-        }
+        return 0; // no alloc to report
     }
 
+    // alloc memory for size_array and ptr_array
+    info->size_array = (long*)malloc(info->num_allocs * sizeof(long));
+    info->ptr_array = (void**)malloc(info->num_allocs * sizeof(void*));
+
+    if (!info->size_array || !info->ptr_array) 
+    {
+        if (info->size_array) 
+        {
+            free(info->size_array);
+        }
+        if (info->ptr_array) 
+        {
+            free(info->ptr_array);
+        }
+        info->size_array = NULL;
+        info->ptr_array = NULL;
+        return -1;
+    }
+
+    // pop size_array and ptr_array
     int alloc_index = 0;
     current = heap_start_addr;
-    uintptr_t heapend2 = (uintptr_t)sbrk(0);
-    
-    while (current + sizeof(vm_block_header) <= heapend2) 
+
+    while (current + sizeof(vm_block_header) <= heap_end) 
     {
         vm_block_header* block_header = (vm_block_header*)current;
         if (block_header->size == 0) 
@@ -426,20 +436,12 @@ int heap_info(heap_info_struct* info) {
             break;
         }
         uintptr_t next = current + block_header->size;
-        if (next > heapend2) 
-        {
+        if (next > heap_end) {
+            
             break;
         }
 
-        if (block_header->is_free) 
-        {
-            info->free_space += block_header->size;
-            if ((long)block_header->size > info->largest_free_chunk) 
-            {
-                info->largest_free_chunk = block_header->size;
-            }
-        } 
-        else 
+        if (!block_header->is_free) 
         {
             info->size_array[alloc_index] = (long)block_header->size;
             info->ptr_array[alloc_index] = (void*)((char*)block_header + sizeof(vm_block_header));
@@ -449,10 +451,7 @@ int heap_info(heap_info_struct* info) {
         current = next;
     }
 
-    if (info->num_allocs > 0) 
-    {
-        quick_sort(info->size_array, info->ptr_array, 0, alloc_index - 1);
-    }
+    quick_sort(info->size_array, info->ptr_array, 0, alloc_index - 1);
 
     return 0;
 }
