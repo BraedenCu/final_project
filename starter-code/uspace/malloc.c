@@ -9,26 +9,26 @@
  **********************************************************************/
 
 #define ALIGNMENT 16
-#define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1))
+#define ALIGN(size) (((size) + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1)) // Alignment function shortcut
 
 #define MIN_PAYLOAD_SIZE 24
 
-#define OVERHEAD (sizeof(block_header))
+#define OVERHEAD (sizeof(vm_block_header))
 
-// block_header: start of every block (allocated/free)
+// vm_block_header: start of every block (allocated/free)
 // size includes header + payload
-typedef struct block_header {
+typedef struct vm_block_header {
     size_t size;
     int is_free;   // 1 if free, 0 if allocated
-} block_header;
+} vm_block_header;
 
-// free_block: stored in payload of free blocks
-typedef struct free_block {
-    struct free_block* next;
-    struct free_block* prev;
-} free_block;
+// free_vm_block: stored in payload of free blocks
+typedef struct free_vm_block {
+    struct free_vm_block* next;
+    struct free_vm_block* prev;
+} free_vm_block;
 
-static free_block* free_list_head = NULL;
+static free_vm_block* free_list_head = NULL;
 static int heap_initialized = 0;
 static uintptr_t heap_start_addr = 0;
 
@@ -39,22 +39,25 @@ static uintptr_t heap_start_addr = 0;
  **********************************************************************/
 
 static void init_heap() {
-    if (heap_initialized) {
-        return;
+    if (heap_initialized) 
+    {
+        return; // do nothing
     }
     heap_initialized = 1;
     heap_start_addr = (uintptr_t) sbrk(0);
     free_list_head = NULL;
 }
 
-static block_header* extend_heap(size_t request) {
+static vm_block_header* extend_heap(size_t request) {
     request = ALIGN(request);
-    // ensure block can hold header and free_block
+
+    // ensure block can hold header and free_vm_block
     if (request < (OVERHEAD + MIN_PAYLOAD_SIZE))
      {
         request = OVERHEAD + MIN_PAYLOAD_SIZE;
     }
 
+    // initialize sbrk
     void* p = sbrk((intptr_t) request);
 
     if (p == (void*) -1) 
@@ -62,17 +65,18 @@ static block_header* extend_heap(size_t request) {
         return NULL; // sbrk failed
     }
 
-    block_header* new_bh = (block_header*) p;
+    vm_block_header* new_bh = (vm_block_header*) p;
     new_bh->size = request;
     new_bh->is_free = 1;
 
     return new_bh;
 }
 
-static void insert_free_block(block_header* bh) {
-    free_block* fb = (free_block*)((char*)bh + sizeof(block_header));
+static void insert_free_vm_block(vm_block_header* bh) {
+    free_vm_block* fb = (free_vm_block*)((char*)bh + sizeof(vm_block_header));
     fb->next = free_list_head;
     fb->prev = NULL;
+
     if (free_list_head) 
     {
         free_list_head->prev = fb;
@@ -80,7 +84,7 @@ static void insert_free_block(block_header* bh) {
     free_list_head = fb;
 }
 
-static void remove_free_block(free_block* fb) {
+static void remove_free_vm_block(free_vm_block* fb) {
     if (fb->prev) 
     {
         fb->prev->next = fb->next;
@@ -95,11 +99,11 @@ static void remove_free_block(free_block* fb) {
     }
 }
 
-static block_header* find_free_block(size_t aligned_size) {
-    free_block* fb = free_list_head;
+static vm_block_header* find_free_vm_block(size_t aligned_size) {
+    free_vm_block* fb = free_list_head;
     while (fb) 
     {
-        block_header* bh = (block_header*)((char*)fb - sizeof(block_header));
+        vm_block_header* bh = (vm_block_header*)((char*)fb - sizeof(vm_block_header));
         if (bh->size >= aligned_size) 
         {
             return bh;
@@ -109,7 +113,7 @@ static block_header* find_free_block(size_t aligned_size) {
     return NULL;
 }
 
-static void split_block(block_header* bh, size_t needed) {
+static void split_block(vm_block_header* bh, size_t needed) {
     size_t block_size = bh->size;
 
     // Check if we have enough space to split off another free block
@@ -117,38 +121,38 @@ static void split_block(block_header* bh, size_t needed) {
     {
         // Not enough space for splitting
         bh->is_free = 0;
-        free_block* fb = (free_block*)((char*)bh + sizeof(block_header));
-        remove_free_block(fb);
+        free_vm_block* fb = (free_vm_block*)((char*)bh + sizeof(vm_block_header));
+        remove_free_vm_block(fb);
         return;
     }
 
     // Split the block
     bh->size = needed;
     bh->is_free = 0;
-    free_block* fb_current = (free_block*)((char*)bh + sizeof(block_header));
-    remove_free_block(fb_current);
+    free_vm_block* fb_current = (free_vm_block*)((char*)bh + sizeof(vm_block_header));
+    remove_free_vm_block(fb_current);
 
-    block_header* leftover_bh = (block_header*)((char*)bh + needed);
+    vm_block_header* leftover_bh = (vm_block_header*)((char*)bh + needed);
     leftover_bh->size = block_size - needed;
     leftover_bh->is_free = 1;
-    insert_free_block(leftover_bh);
+    insert_free_vm_block(leftover_bh);
 }
 
-static int coalesce_if_adjacent(block_header* bh1, block_header* bh2) {
-    uintptr_t bh1_end = (uintptr_t)bh1 + bh1->size;
-    if (bh1_end == (uintptr_t)bh2) 
+static int coalesce_if_adjacent(vm_block_header* block_header_one, vm_block_header* block_header_two) {
+    uintptr_t block_header_one_end = (uintptr_t)block_header_one + block_header_one->size;
+    if (block_header_one_end == (uintptr_t)block_header_two) 
     {
-        // Adjacent blocks, merge bh2 into bh1
-        free_block* fb2 = (free_block*)((char*)bh2 + sizeof(block_header));
-        remove_free_block(fb2);
+        // Adjacent blocks, merge block_header_two into block_header_one
+        free_vm_block* vm_free_block_two = (free_vm_block*)((char*)block_header_two + sizeof(vm_block_header));
+        remove_free_vm_block(vm_free_block_two);
 
-        bh1->size += bh2->size;
+        block_header_one->size += block_header_two->size;
         return 1;
     }
     return 0;
 }
 
-// Quicksort helper functions
+//  quicksort helper functions, pretty standard
 static void swap_long(long* a, long* b) {
     long tmp = *a;
     *a = *b;
@@ -176,21 +180,23 @@ static int partition(long size_array[], void* ptr_array[], int low, int high) {
     }
     swap_long(&size_array[i + 1], &size_array[high]);
     swap_ptr(&ptr_array[i + 1], &ptr_array[high]);
+
     return i + 1;
 }
 
 static void quicksort_descending(long size_array[], void* ptr_array[], int low, int high) {
     if (low < high) 
     {
-        int pi = partition(size_array, ptr_array, low, high);
-        quicksort_descending(size_array, ptr_array, low, pi - 1);
-        quicksort_descending(size_array, ptr_array, pi + 1, high);
+        int partition_index = partition(size_array, ptr_array, low, high);
+
+        quicksort_descending(size_array, ptr_array, low, partition_index - 1);
+        quicksort_descending(size_array, ptr_array, partition_index + 1, high);
     }
 }
 
 /**********************************************************************
  * 
- *  End Custom Helpers
+ *  Begin Built In
  * 
  **********************************************************************/
 
@@ -209,11 +215,11 @@ void* malloc(uint64_t numbytes) {
         needed = OVERHEAD + MIN_PAYLOAD_SIZE;
     }
 
-    block_header* bh = find_free_block(needed);
+    vm_block_header* bh = find_free_vm_block(needed);
     if (bh) 
     {
         split_block(bh, needed);
-        return (void*)((char*)bh + sizeof(block_header));
+        return (void*)((char*)bh + sizeof(vm_block_header));
     }
 
     bh = extend_heap(needed);
@@ -222,10 +228,10 @@ void* malloc(uint64_t numbytes) {
         return NULL;
     }
 
-    insert_free_block(bh);
+    insert_free_vm_block(bh);
     split_block(bh, needed);
 
-    return (void*)((char*)bh + sizeof(block_header));
+    return (void*)((char*)bh + sizeof(vm_block_header));
 }
 
 void free(void* ptr) {
@@ -233,9 +239,9 @@ void free(void* ptr) {
     {
         return;
     }
-    block_header* bh = (block_header*)((char*)ptr - sizeof(block_header));
+    vm_block_header* bh = (vm_block_header*)((char*)ptr - sizeof(vm_block_header));
     bh->is_free = 1;
-    insert_free_block(bh);
+    insert_free_vm_block(bh);
 }
 
 void* calloc(uint64_t num, uint64_t sz) {
@@ -266,8 +272,8 @@ void* realloc(void* ptr, uint64_t sz)
         return NULL;
     }
 
-    block_header* old_bh = (block_header*)((char*)ptr - sizeof(block_header));
-    size_t old_size = old_bh->size - sizeof(block_header);
+    vm_block_header* old_bh = (vm_block_header*)((char*)ptr - sizeof(vm_block_header));
+    size_t old_size = old_bh->size - sizeof(vm_block_header);
     if (sz <= old_size) 
     {
         return ptr;
@@ -294,25 +300,25 @@ void defrag() {
     while (merged) 
     {
         merged = 0;
-        free_block* fb1 = free_list_head;
-        while (fb1) 
+        free_vm_block* vm_free_block_one = free_list_head;
+        while (vm_free_block_one) 
         {
-            block_header* bh1 = (block_header*)((char*)fb1 - sizeof(block_header));
-            free_block* fb2 = fb1->next;
-            while (fb2) 
+            vm_block_header* block_header_one = (vm_block_header*)((char*)vm_free_block_one - sizeof(vm_block_header));
+            free_vm_block* vm_free_block_two = vm_free_block_one->next;
+            while (vm_free_block_two) 
             {
-                block_header* bh2 = (block_header*)((char*)fb2 - sizeof(block_header));
-                if (coalesce_if_adjacent(bh1, bh2)) 
+                vm_block_header* block_header_two = (vm_block_header*)((char*)vm_free_block_two - sizeof(vm_block_header));
+                if (coalesce_if_adjacent(block_header_one, block_header_two)) 
                 {
                     merged = 1;
                 } 
-                else if (coalesce_if_adjacent(bh2, bh1)) 
+                else if (coalesce_if_adjacent(block_header_two, block_header_one)) 
                 {
                     merged = 1;
                 }
-                fb2 = fb2->next;
+                vm_free_block_two = vm_free_block_two->next;
             }
-            fb1 = fb1->next;
+            vm_free_block_one = vm_free_block_one->next;
         }
     }
 }
@@ -332,9 +338,9 @@ int heap_info(heap_info_struct* info) {
     uintptr_t current = heap_start_addr;
     uintptr_t heap_end = (uintptr_t) sbrk(0);
 
-    while (current + sizeof(block_header) <= heap_end) 
+    while (current + sizeof(vm_block_header) <= heap_end) 
     {
-        block_header* bh = (block_header*)current;
+        vm_block_header* bh = (vm_block_header*)current;
         if (bh->size == 0) 
         {
             break;
@@ -376,9 +382,9 @@ int heap_info(heap_info_struct* info) {
     int alloc_index = 0;
     current = heap_start_addr;
     uintptr_t heapend2 = (uintptr_t)sbrk(0);
-    while (current + sizeof(block_header) <= heapend2) 
+    while (current + sizeof(vm_block_header) <= heapend2) 
     {
-        block_header* bh = (block_header*)current;
+        vm_block_header* bh = (vm_block_header*)current;
         if (bh->size == 0) 
         {
             break;
@@ -400,7 +406,7 @@ int heap_info(heap_info_struct* info) {
         else 
         {
             info->size_array[alloc_index] = (long)bh->size;
-            info->ptr_array[alloc_index] = (void*)((char*)bh + sizeof(block_header));
+            info->ptr_array[alloc_index] = (void*)((char*)bh + sizeof(vm_block_header));
             alloc_index++;
         }
 
